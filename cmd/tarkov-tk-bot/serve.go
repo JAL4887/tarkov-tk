@@ -404,6 +404,7 @@ var (
 					s.ChannelMessageSend(i.ChannelID, fmt.Sprintf("Could not get kills for server. Please try again\n"))
 					return
 				}
+				sortKillsHighestToLowest(kills)
 			}
 
 			for _, k := range kills {

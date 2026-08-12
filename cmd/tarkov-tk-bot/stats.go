@@ -89,6 +89,10 @@ func handleDisappointmentStats(s *discordgo.Session, i *discordgo.InteractionCre
 		return
 	}
 
+	if responsible == nil {
+		sortDisappointmentsHighestToLowest(disappointments)
+	}
+
 	displayNames := memberDisplayNames(members)
 	displayDisappointments := make([]*storage.Disappointment, 0, len(disappointments))
 	for _, disappointment := range disappointments {
@@ -194,14 +198,7 @@ func handleCombinedStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		for _, playerStats := range statsByPlayer {
 			stats = append(stats, playerStats)
 		}
-		sort.Slice(stats, func(i, j int) bool {
-			left := strings.ToLower(displayNameForID(stats[i].PlayerID, displayNames))
-			right := strings.ToLower(displayNameForID(stats[j].PlayerID, displayNames))
-			if left == right {
-				return stats[i].PlayerID < stats[j].PlayerID
-			}
-			return left < right
-		})
+		sortCombinedPlayerStatsHighestToLowest(stats, displayNames)
 	}
 
 	lines := make([]string, 0, len(stats))
@@ -256,6 +253,52 @@ func buildCombinedPlayerStats(kills []*storage.Kill, disappointments []*storage.
 	}
 
 	return stats
+}
+
+func sortCombinedPlayerStatsHighestToLowest(stats []*CombinedPlayerStats, displayNames map[string]string) {
+	sort.SliceStable(stats, func(i, j int) bool {
+		if stats[i].TeamKills != stats[j].TeamKills {
+			return stats[i].TeamKills > stats[j].TeamKills
+		}
+		if stats[i].Disappointments != stats[j].Disappointments {
+			return stats[i].Disappointments > stats[j].Disappointments
+		}
+		if stats[i].TeamDeaths != stats[j].TeamDeaths {
+			return stats[i].TeamDeaths > stats[j].TeamDeaths
+		}
+		if stats[i].DisappointmentsReceived != stats[j].DisappointmentsReceived {
+			return stats[i].DisappointmentsReceived > stats[j].DisappointmentsReceived
+		}
+
+		left := strings.ToLower(displayNameForID(stats[i].PlayerID, displayNames))
+		right := strings.ToLower(displayNameForID(stats[j].PlayerID, displayNames))
+		if left == right {
+			return stats[i].PlayerID < stats[j].PlayerID
+		}
+		return left < right
+	})
+}
+
+func sortDisappointmentsHighestToLowest(disappointments []*storage.Disappointment) {
+	counts := make(map[string]int)
+	for _, disappointment := range disappointments {
+		counts[disappointment.Responsible]++
+	}
+
+	sort.SliceStable(disappointments, func(i, j int) bool {
+		leftCount := counts[disappointments[i].Responsible]
+		rightCount := counts[disappointments[j].Responsible]
+		if leftCount != rightCount {
+			return leftCount > rightCount
+		}
+		if !disappointments[i].Date.Equal(disappointments[j].Date) {
+			return disappointments[i].Date.After(disappointments[j].Date)
+		}
+		if disappointments[i].Responsible != disappointments[j].Responsible {
+			return disappointments[i].Responsible < disappointments[j].Responsible
+		}
+		return disappointments[i].Victim < disappointments[j].Victim
+	})
 }
 
 func memberDisplayNames(members []*discordgo.Member) map[string]string {
