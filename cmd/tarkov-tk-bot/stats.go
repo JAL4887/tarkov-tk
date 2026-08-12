@@ -55,8 +55,104 @@ func init() {
 		},
 	)
 
+	commandHandlers["tkstats"] = handleTKStatsPresentation
 	commandHandlers["disappointmentstats"] = handleDisappointmentStats
 	commandHandlers["stats"] = handleCombinedStats
+}
+
+func handleTKStatsPresentation(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	ctx := context.Background()
+	members, err := s.GuildMembers(i.GuildID, "", 1000)
+	if err != nil {
+		respondStatsError(s, i, "Could not get Discord members for server. Please try again.", err)
+		return
+	}
+
+	var killer *discordgo.User
+	var shouldCSV bool
+	for _, option := range i.ApplicationCommandData().Options {
+		switch option.Type {
+		case discordgo.ApplicationCommandOptionUser:
+			killer = option.UserValue(s)
+		case discordgo.ApplicationCommandOptionBoolean:
+			shouldCSV = option.BoolValue()
+		}
+	}
+
+	var kills []*storage.Kill
+	if killer != nil {
+		kills, err = store.ListPlayerKillsForServer(ctx, i.GuildID, killer.ID)
+	} else {
+		kills, err = store.ListKillsForServer(ctx, i.GuildID)
+	}
+	if err != nil {
+		respondStatsError(s, i, "Could not get kills for server. Please try again.", err)
+		return
+	}
+
+	if killer == nil {
+		sortKillsHighestToLowest(kills)
+	}
+
+	displayNames := memberDisplayNames(members)
+	displayKills := make([]*storage.Kill, 0, len(kills))
+	for _, kill := range kills {
+		copyOfKill := *kill
+		copyOfKill.Killer = displayNameForID(kill.Killer, displayNames)
+		copyOfKill.Victim = displayNameForID(kill.Victim, displayNames)
+		displayKills = append(displayKills, &copyOfKill)
+	}
+
+	guildName := guildDisplayName(s, i.GuildID)
+	if shouldCSV {
+		csvBuffer := &bytes.Buffer{}
+		if err := gocsv.Marshal(displayKills, csvBuffer); err != nil {
+			respondStatsError(s, i, "Could not generate TK CSV. Please try again.", err)
+			return
+		}
+
+		fileName := fmt.Sprintf("%s-TarkovTKStats-%s.csv", guildName, time.Now().Format("2006-01-02"))
+		if killer != nil {
+			fileName = fmt.Sprintf("%s-%s-TarkovTKStats-%s.csv", killer.Username, guildName, time.Now().Format("2006-01-02"))
+		}
+
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "Successfully generated server stats",
+				Files: []*discordgo.File{
+					{
+						Name:        fileName,
+						ContentType: "text/csv",
+						Reader:      csvBuffer,
+					},
+				},
+			},
+		})
+		if err != nil {
+			log.Error().Err(err)
+		}
+		return
+	}
+
+	title := fmt.Sprintf("💀 Team Kill History · %s", guildName)
+	if killer != nil {
+		title = fmt.Sprintf("💀 Team Kill History · %s", displayNameForID(killer.ID, displayNames))
+	}
+
+	lines := make([]string, 0, len(displayKills))
+	for _, kill := range displayKills {
+		line := fmt.Sprintf("**%s → %s**  •  %s", kill.Killer, kill.Victim, kill.Date.Format("01/02/2006"))
+		if kill.Reason != "" {
+			line += fmt.Sprintf("\n> %s", kill.Reason)
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		lines = append(lines, "No team kills logged.")
+	}
+
+	sendPagedStatEmbedResponse(s, i, title, lines, fmt.Sprintf("%d team kill(s)", len(displayKills)))
 }
 
 func handleDisappointmentStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -134,24 +230,24 @@ func handleDisappointmentStats(s *discordgo.Session, i *discordgo.InteractionCre
 		return
 	}
 
-	header := fmt.Sprintf("**Disappointment Stats for %s**\n\n", guildName)
+	title := fmt.Sprintf("😞 Disappointments · %s", guildName)
 	if responsible != nil {
-		header = fmt.Sprintf("**Disappointment Stats for %s**\n\n", displayNameForID(responsible.ID, displayNames))
+		title = fmt.Sprintf("😞 Disappointments · %s", displayNameForID(responsible.ID, displayNames))
 	}
 
 	lines := make([]string, 0, len(displayDisappointments))
 	for _, disappointment := range displayDisappointments {
-		line := fmt.Sprintf("%s - **%s** disappointed **%s**", disappointment.Date.Format("01/02/2006"), disappointment.Responsible, disappointment.Victim)
+		line := fmt.Sprintf("**%s → %s**  •  %s", disappointment.Responsible, disappointment.Victim, disappointment.Date.Format("01/02/2006"))
 		if disappointment.Reason != "" {
-			line += fmt.Sprintf(": \"%s\"", disappointment.Reason)
+			line += fmt.Sprintf("\n> %s", disappointment.Reason)
 		}
-		lines = append(lines, line+"\n\n")
+		lines = append(lines, line)
 	}
 	if len(lines) == 0 {
-		lines = append(lines, "No disappointments logged.\n")
+		lines = append(lines, "No disappointments logged.")
 	}
 
-	sendPagedInteractionResponse(s, i, header, lines)
+	sendPagedStatEmbedResponse(s, i, title, lines, fmt.Sprintf("%d disappointment(s)", len(displayDisappointments)))
 }
 
 func handleCombinedStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -184,7 +280,7 @@ func handleCombinedStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	statsByPlayer := buildCombinedPlayerStats(kills, disappointments)
 	displayNames := memberDisplayNames(members)
 	guildName := guildDisplayName(s, i.GuildID)
-	header := fmt.Sprintf("**Combined TK + Disappointment Stats for %s**\n\n", guildName)
+	title := fmt.Sprintf("📊 TK + Disappointment Stats · %s", guildName)
 
 	stats := make([]*CombinedPlayerStats, 0, len(statsByPlayer))
 	if selectedPlayer != nil {
@@ -193,7 +289,7 @@ func handleCombinedStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			playerStats = &CombinedPlayerStats{PlayerID: selectedPlayer.ID}
 		}
 		stats = append(stats, playerStats)
-		header = fmt.Sprintf("**Combined Stats for %s**\n\n", displayNameForID(selectedPlayer.ID, displayNames))
+		title = fmt.Sprintf("📊 Combined Stats · %s", displayNameForID(selectedPlayer.ID, displayNames))
 	} else {
 		for _, playerStats := range statsByPlayer {
 			stats = append(stats, playerStats)
@@ -202,9 +298,14 @@ func handleCombinedStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	lines := make([]string, 0, len(stats))
-	for _, playerStats := range stats {
+	for index, playerStats := range stats {
+		prefix := ""
+		if selectedPlayer == nil {
+			prefix = leaderboardRank(index) + " "
+		}
 		lines = append(lines, fmt.Sprintf(
-			"**%s** - TKs: %d | Team Deaths: %d | Disappointments: %d | Received: %d\n",
+			"%s**%s**\n`TK %d`  `TD %d`  `DIS %d`  `REC %d`",
+			prefix,
 			displayNameForID(playerStats.PlayerID, displayNames),
 			playerStats.TeamKills,
 			playerStats.TeamDeaths,
@@ -213,10 +314,14 @@ func handleCombinedStats(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		))
 	}
 	if len(lines) == 0 {
-		lines = append(lines, "No TK or disappointment stats logged.\n")
+		lines = append(lines, "No TK or disappointment stats logged.")
 	}
 
-	sendPagedInteractionResponse(s, i, header, lines)
+	footer := "TK = Team Kills • TD = Team Deaths • DIS = Disappointments • REC = Received"
+	if selectedPlayer == nil {
+		footer = fmt.Sprintf("%d player(s) • %s", len(stats), footer)
+	}
+	sendPagedStatEmbedResponse(s, i, title, lines, footer)
 }
 
 func buildCombinedPlayerStats(kills []*storage.Kill, disappointments []*storage.Disappointment) map[string]*CombinedPlayerStats {
