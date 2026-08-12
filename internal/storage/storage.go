@@ -11,6 +11,8 @@ type KillStore interface {
 	KillPutter
 	KillDeleter
 	KillLister
+	DisappointmentPutter
+	LegacyImporter
 	KillCloser
 }
 
@@ -32,17 +34,45 @@ type KillLister interface {
 	ListPlayerKillsForServer(ctx context.Context, serverId string, killerId string) ([]*Kill, error)
 }
 
+type DisappointmentPutter interface {
+	CreateDisappointment(ctx context.Context, disappointment *Disappointment) (*Disappointment, error)
+}
+
+type LegacyImporter interface {
+	LegacyKillExists(ctx context.Context, fingerprint string) (bool, error)
+	LegacyDisappointmentExists(ctx context.Context, fingerprint string) (bool, error)
+	ImportLegacyKill(ctx context.Context, kill *Kill, fingerprint string) (bool, error)
+	ImportLegacyDisappointment(ctx context.Context, disappointment *Disappointment, fingerprint string) (bool, error)
+}
+
 type KillCloser interface {
 	Close()
 }
 
+type LegacyImportMetadata struct {
+	Source      string    `firestore:"source"`
+	Fingerprint string    `firestore:"fingerprint"`
+	ImportedAt  time.Time `firestore:"importedAt"`
+}
+
 type Kill struct {
-	ID       string    `firestore:"id" csv:"-"`
-	ServerID string    `firestore:"serverId" csv:"-"`
-	Killer   string    `firestore:"killer"`
-	Victim   string    `firestore:"victim"`
-	Reason   string    `firestore:"reason"`
-	Date     time.Time `firestore:"date"`
+	ID           string                `firestore:"id" csv:"-"`
+	ServerID     string                `firestore:"serverId" csv:"-"`
+	Killer       string                `firestore:"killer"`
+	Victim       string                `firestore:"victim"`
+	Reason       string                `firestore:"reason"`
+	Date         time.Time             `firestore:"date"`
+	LegacyImport *LegacyImportMetadata `firestore:"legacyImport,omitempty" csv:"-"`
+}
+
+type Disappointment struct {
+	ID           string                `firestore:"id" csv:"-"`
+	ServerID     string                `firestore:"serverId" csv:"-"`
+	Responsible  string                `firestore:"responsible"`
+	Victim       string                `firestore:"victim"`
+	Reason       string                `firestore:"reason"`
+	Date         time.Time             `firestore:"date"`
+	LegacyImport *LegacyImportMetadata `firestore:"legacyImport,omitempty" csv:"-"`
 }
 
 type ErrNotFound struct {

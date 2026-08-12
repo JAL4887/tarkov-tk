@@ -2,6 +2,8 @@ package firestore
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	firebase "firebase.google.com/go"
@@ -11,6 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+const legacyImportSource = "legacy-tarkov-tk-csv"
 
 type (
 	KillStore struct {
@@ -74,6 +78,16 @@ func (s *KillStore) CreateKill(ctx context.Context, kill *storage.Kill) (*storag
 	return kill, nil
 }
 
+func (s *KillStore) CreateDisappointment(ctx context.Context, disappointment *storage.Disappointment) (*storage.Disappointment, error) {
+	ref := s.client.Collection("disappointments").NewDoc()
+	disappointment.ID = ref.ID
+	_, err := ref.Set(ctx, disappointment)
+	if err != nil {
+		return nil, err
+	}
+	return disappointment, nil
+}
+
 func (s *KillStore) DeleteKill(ctx context.Context, id string) error {
 	_, err := s.client.Collection("kills").Doc(id).Delete(ctx)
 	if err != nil {
@@ -109,6 +123,79 @@ func (s *KillStore) ListKillsForServer(ctx context.Context, serverId string) ([]
 func (s *KillStore) ListPlayerKillsForServer(ctx context.Context, serverId string, killerId string) ([]*storage.Kill, error) {
 	iter := s.client.Collection("kills").Where("serverId", "==", serverId).Where("killer", "==", killerId).OrderBy("date", firestore.Desc).Documents(ctx)
 	return iterateKills(iter)
+}
+
+func (s *KillStore) LegacyKillExists(ctx context.Context, fingerprint string) (bool, error) {
+	return s.legacyRecordExists(ctx, "kills", fingerprint)
+}
+
+func (s *KillStore) LegacyDisappointmentExists(ctx context.Context, fingerprint string) (bool, error) {
+	return s.legacyRecordExists(ctx, "disappointments", fingerprint)
+}
+
+func (s *KillStore) ImportLegacyKill(ctx context.Context, kill *storage.Kill, fingerprint string) (bool, error) {
+	if fingerprint == "" {
+		return false, fmt.Errorf("legacy fingerprint cannot be empty")
+	}
+
+	ref := s.client.Collection("kills").Doc(legacyDocumentID(fingerprint))
+	kill.ID = ref.ID
+	kill.LegacyImport = newLegacyImportMetadata(fingerprint)
+
+	_, err := ref.Create(ctx, kill)
+	if status.Code(err) == codes.AlreadyExists {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *KillStore) ImportLegacyDisappointment(ctx context.Context, disappointment *storage.Disappointment, fingerprint string) (bool, error) {
+	if fingerprint == "" {
+		return false, fmt.Errorf("legacy fingerprint cannot be empty")
+	}
+
+	ref := s.client.Collection("disappointments").Doc(legacyDocumentID(fingerprint))
+	disappointment.ID = ref.ID
+	disappointment.LegacyImport = newLegacyImportMetadata(fingerprint)
+
+	_, err := ref.Create(ctx, disappointment)
+	if status.Code(err) == codes.AlreadyExists {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *KillStore) legacyRecordExists(ctx context.Context, collection string, fingerprint string) (bool, error) {
+	if fingerprint == "" {
+		return false, fmt.Errorf("legacy fingerprint cannot be empty")
+	}
+
+	_, err := s.client.Collection(collection).Doc(legacyDocumentID(fingerprint)).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func legacyDocumentID(fingerprint string) string {
+	return "legacy-" + fingerprint
+}
+
+func newLegacyImportMetadata(fingerprint string) *storage.LegacyImportMetadata {
+	return &storage.LegacyImportMetadata{
+		Source:      legacyImportSource,
+		Fingerprint: fingerprint,
+		ImportedAt:  time.Now().UTC(),
+	}
 }
 
 func iterateKills(iter *firestore.DocumentIterator) ([]*storage.Kill, error) {
