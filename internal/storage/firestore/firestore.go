@@ -141,9 +141,40 @@ func (s *KillStore) ListPlayerKillsForServer(ctx context.Context, serverId strin
 	return playerKills, nil
 }
 
+func (s *KillStore) ListDisappointmentsForServer(ctx context.Context, serverId string) ([]*storage.Disappointment, error) {
+	iter := s.client.Collection("disappointments").Where("serverId", "==", serverId).Documents(ctx)
+	disappointments, err := iterateDisappointments(iter)
+	if err != nil {
+		return nil, err
+	}
+	sortDisappointmentsNewestFirst(disappointments)
+	return disappointments, nil
+}
+
+func (s *KillStore) ListPlayerDisappointmentsForServer(ctx context.Context, serverId string, responsibleId string) ([]*storage.Disappointment, error) {
+	disappointments, err := s.ListDisappointmentsForServer(ctx, serverId)
+	if err != nil {
+		return nil, err
+	}
+
+	playerDisappointments := make([]*storage.Disappointment, 0)
+	for _, disappointment := range disappointments {
+		if disappointment.Responsible == responsibleId {
+			playerDisappointments = append(playerDisappointments, disappointment)
+		}
+	}
+	return playerDisappointments, nil
+}
+
 func sortKillsNewestFirst(kills []*storage.Kill) {
 	sort.SliceStable(kills, func(i, j int) bool {
 		return kills[i].Date.After(kills[j].Date)
+	})
+}
+
+func sortDisappointmentsNewestFirst(disappointments []*storage.Disappointment) {
+	sort.SliceStable(disappointments, func(i, j int) bool {
+		return disappointments[i].Date.After(disappointments[j].Date)
 	})
 }
 
@@ -238,6 +269,26 @@ func iterateKills(iter *firestore.DocumentIterator) ([]*storage.Kill, error) {
 		kills = append(kills, k)
 	}
 	return kills, nil
+}
+
+func iterateDisappointments(iter *firestore.DocumentIterator) ([]*storage.Disappointment, error) {
+	disappointments := []*storage.Disappointment{}
+	defer iter.Stop()
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var disappointment *storage.Disappointment
+		if err := doc.DataTo(&disappointment); err != nil {
+			return nil, err
+		}
+		disappointments = append(disappointments, disappointment)
+	}
+	return disappointments, nil
 }
 
 func (s *KillStore) Close() {
