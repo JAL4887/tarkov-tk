@@ -24,3 +24,21 @@ func TestSortKillsNewestFirst(t *testing.T) {
 		t.Fatalf("unexpected order: %s, %s, %s", kills[0].ID, kills[1].ID, kills[2].ID)
 	}
 }
+
+func TestSortDisappointmentsNewestFirst(t *testing.T) {
+	oldest := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	middle := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+	newest := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+	disappointments := []*storage.Disappointment{
+		{ID: "middle", Date: middle},
+		{ID: "oldest", Date: oldest},
+		{ID: "newest", Date: newest},
+	}
+
+	sortDisappointmentsNewestFirst(disappointments)
+
+	if disappointments[0].ID != "newest" || disappointments[1].ID != "middle" || disappointments[2].ID != "oldest" {
+		t.Fatalf("unexpected order: %s, %s, %s", disappointments[0].ID, disappointments[1].ID, disappointments[2].ID)
+	}
+}

@@ -12,6 +12,7 @@ type KillStore interface {
 	KillDeleter
 	KillLister
 	DisappointmentPutter
+	DisappointmentLister
 	LegacyImporter
 	KillCloser
 }
@@ -36,6 +37,11 @@ type KillLister interface {
 
 type DisappointmentPutter interface {
 	CreateDisappointment(ctx context.Context, disappointment *Disappointment) (*Disappointment, error)
+}
+
+type DisappointmentLister interface {
+	ListDisappointmentsForServer(ctx context.Context, serverId string) ([]*Disappointment, error)
+	ListPlayerDisappointmentsForServer(ctx context.Context, serverId string, responsibleId string) ([]*Disappointment, error)
 }
 
 type LegacyImporter interface {
