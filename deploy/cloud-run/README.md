@@ -6,7 +6,7 @@ This deployment runs the Discord bot as a single continuously running Cloud Run 
 
 - Cloud Run worker pool: `tarkov-tk`
 - Instances: `1`
-- CPU: `0.08`
+- CPU: `1`
 - Memory: `512Mi`
 - Runtime identity: dedicated user-managed Google service account
 - Firestore authentication: Application Default Credentials from the attached service account
@@ -102,7 +102,7 @@ gcloud run worker-pools deploy "$WORKER_POOL" \
   --source . \
   --region "$REGION" \
   --instances 1 \
-  --cpu 0.08 \
+  --cpu 1 \
   --memory 512Mi \
   --service-account "$RUNTIME_SA_EMAIL" \
   --set-secrets "/secrets/tarkov-tk/config.toml=${CONFIG_SECRET}:latest" \
@@ -137,7 +137,7 @@ gcloud run worker-pools deploy "$WORKER_POOL" \
   --source . \
   --region "$REGION" \
   --instances 1 \
-  --cpu 0.08 \
+  --cpu 1 \
   --memory 512Mi \
   --service-account "$RUNTIME_SA_EMAIL" \
   --set-secrets "/secrets/tarkov-tk/config.toml=${CONFIG_SECRET}:latest" \
