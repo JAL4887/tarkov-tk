@@ -13,6 +13,8 @@ import (
 	configkit "go.soon.build/kit/config"
 )
 
+const configTOMLEnvVar = "TARKOV_TK_CONFIG_TOML"
+
 // Default logger
 var log zerolog.Logger
 
@@ -46,10 +48,16 @@ func tarkovtkbotCmd() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// setup logger to capture config errors
 			log = initLogger(defaultLog)
+
+			resolvedConfigPath, cleanupConfig, err := resolveConfigPath(configPath)
+			if err != nil {
+				return err
+			}
+			defer cleanupConfig()
+
 			// Load config
-			var err error
 			cfg, err = config.New(
-				configkit.WithFile(configPath),
+				configkit.WithFile(resolvedConfigPath),
 				configkit.BindFlag("log.console", cmd.Flag("console")),
 				configkit.BindFlag("log.verbose", cmd.Flag("verbose")),
 			)
@@ -72,6 +80,39 @@ func tarkovtkbotCmd() *cobra.Command {
 	cmd.AddCommand(serveCmd())
 	cmd.AddCommand(migrateLegacyCmd())
 	return cmd
+}
+
+func resolveConfigPath(configPath string) (string, func(), error) {
+	if configPath != "" {
+		return configPath, func() {}, nil
+	}
+
+	configContent := os.Getenv(configTOMLEnvVar)
+	if configContent == "" {
+		return "", func() {}, nil
+	}
+
+	configFile, err := os.CreateTemp("", "tarkov-tk-bot-*.toml")
+	if err != nil {
+		return "", func() {}, err
+	}
+
+	configFilePath := configFile.Name()
+	cleanup := func() {
+		_ = os.Remove(configFilePath)
+	}
+
+	if _, err := configFile.WriteString(configContent); err != nil {
+		_ = configFile.Close()
+		cleanup()
+		return "", func() {}, err
+	}
+	if err := configFile.Close(); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+
+	return configFilePath, cleanup, nil
 }
 
 // tarkov-tk-botRun is executed when the CLI executes
