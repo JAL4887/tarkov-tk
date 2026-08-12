@@ -70,6 +70,7 @@ func tarkovtkbotCmd() *cobra.Command {
 	// Add sub commands
 	cmd.AddCommand(versionCmd())
 	cmd.AddCommand(serveCmd())
+	cmd.AddCommand(migrateLegacyCmd())
 	return cmd
 }
 
