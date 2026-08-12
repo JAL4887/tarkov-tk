@@ -10,9 +10,11 @@ This deployment runs the Discord bot as a single continuously running Cloud Run 
 - Memory: `512Mi`
 - Runtime identity: dedicated user-managed Google service account
 - Firestore authentication: Application Default Credentials from the attached service account
-- Bot configuration: one Secret Manager secret mounted as `/secrets/tarkov-tk/config.toml`
+- Bot configuration: one Secret Manager secret exposed as `TARKOV_TK_CONFIG_TOML`
 
 The production configuration intentionally leaves `firebase.serviceAccountFilePath` empty. On Google Cloud the Firebase Admin SDK uses the service account attached to the worker pool, so no service-account JSON key is copied into the container.
+
+When `--config` is not supplied and `TARKOV_TK_CONFIG_TOML` is present, the bot writes the secret value to a private temporary TOML file, loads the configuration, and removes the temporary file immediately after configuration has been parsed.
 
 ## 1. Prepare the production config
 
@@ -95,7 +97,9 @@ For later deployments, use the branch or commit that has already passed local bu
 
 ## 7. Deploy the worker pool
 
-The repository Dockerfile is used automatically by source deployment.
+The repository Dockerfile is used automatically by source deployment. The production TOML is supplied through a Secret Manager-backed environment variable because worker-pool source deployment may reject secret volume mounts even though secret environment variables are supported.
+
+Pin the secret version used by the worker pool. The initial configuration created during this deployment uses version `1`.
 
 ```bash
 gcloud run worker-pools deploy "$WORKER_POOL" \
@@ -105,9 +109,10 @@ gcloud run worker-pools deploy "$WORKER_POOL" \
   --cpu 1 \
   --memory 512Mi \
   --service-account "$RUNTIME_SA_EMAIL" \
-  --set-secrets "/secrets/tarkov-tk/config.toml=${CONFIG_SECRET}:latest" \
-  --args="--config,/secrets/tarkov-tk/config.toml,serve"
+  --set-secrets "TARKOV_TK_CONFIG_TOML=${CONFIG_SECRET}:1"
 ```
+
+The Docker image already defaults to the `serve` command, so no command-line configuration path is required in production.
 
 The worker pool must remain at one instance for the Discord bot to remain connected continuously.
 
@@ -140,8 +145,9 @@ gcloud run worker-pools deploy "$WORKER_POOL" \
   --cpu 1 \
   --memory 512Mi \
   --service-account "$RUNTIME_SA_EMAIL" \
-  --set-secrets "/secrets/tarkov-tk/config.toml=${CONFIG_SECRET}:latest" \
-  --args="--config,/secrets/tarkov-tk/config.toml,serve"
+  --set-secrets "TARKOV_TK_CONFIG_TOML=${CONFIG_SECRET}:1"
 ```
+
+If the production config secret is rotated, create a new Secret Manager version and update the pinned version in the deploy command.
 
 Do not put `service-account-file.json`, the Discord bot token, or a completed production TOML file into the container image or Git repository.
