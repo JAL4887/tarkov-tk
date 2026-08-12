@@ -3,6 +3,7 @@ package firestore
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -116,13 +117,34 @@ func (s *KillStore) DeleteKillsForServer(ctx context.Context, serverId string) e
 }
 
 func (s *KillStore) ListKillsForServer(ctx context.Context, serverId string) ([]*storage.Kill, error) {
-	iter := s.client.Collection("kills").Where("serverId", "==", serverId).OrderBy("date", firestore.Desc).Documents(ctx)
-	return iterateKills(iter)
+	iter := s.client.Collection("kills").Where("serverId", "==", serverId).Documents(ctx)
+	kills, err := iterateKills(iter)
+	if err != nil {
+		return nil, err
+	}
+	sortKillsNewestFirst(kills)
+	return kills, nil
 }
 
 func (s *KillStore) ListPlayerKillsForServer(ctx context.Context, serverId string, killerId string) ([]*storage.Kill, error) {
-	iter := s.client.Collection("kills").Where("serverId", "==", serverId).Where("killer", "==", killerId).OrderBy("date", firestore.Desc).Documents(ctx)
-	return iterateKills(iter)
+	kills, err := s.ListKillsForServer(ctx, serverId)
+	if err != nil {
+		return nil, err
+	}
+
+	playerKills := make([]*storage.Kill, 0)
+	for _, kill := range kills {
+		if kill.Killer == killerId {
+			playerKills = append(playerKills, kill)
+		}
+	}
+	return playerKills, nil
+}
+
+func sortKillsNewestFirst(kills []*storage.Kill) {
+	sort.SliceStable(kills, func(i, j int) bool {
+		return kills[i].Date.After(kills[j].Date)
+	})
 }
 
 func (s *KillStore) LegacyKillExists(ctx context.Context, fingerprint string) (bool, error) {
