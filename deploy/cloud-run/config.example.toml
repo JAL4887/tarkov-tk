@@ -1,0 +1,13 @@
+[log]
+verbose = false
+console = false
+level = "info"
+
+[discord]
+botToken = "REPLACE_WITH_DISCORD_BOT_TOKEN"
+removeCommands = false
+guildId = "REPLACE_WITH_DISCORD_GUILD_ID"
+
+[firebase]
+projectId = "REPLACE_WITH_FIREBASE_PROJECT_ID"
+serviceAccountFilePath = ""
