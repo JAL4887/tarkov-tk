@@ -36,7 +36,8 @@ func TestBuildStatEmbedPagesKeepsShortLinesTogether(t *testing.T) {
 
 func TestBuildStatEmbedPagesSplitsLongContent(t *testing.T) {
 	longLine := strings.Repeat("x", statEmbedDescriptionLimit-10)
-	pages := buildStatEmbedPages([]string{longLine, "second"})
+	secondLine := strings.Repeat("y", 20)
+	pages := buildStatEmbedPages([]string{longLine, secondLine})
 
 	if len(pages) != 2 {
 		t.Fatalf("expected two pages, got %d", len(pages))
@@ -44,7 +45,7 @@ func TestBuildStatEmbedPagesSplitsLongContent(t *testing.T) {
 	if pages[0] != longLine {
 		t.Fatal("expected the long line to remain on the first page")
 	}
-	if pages[1] != "second" {
+	if pages[1] != secondLine {
 		t.Fatalf("unexpected second page content: %q", pages[1])
 	}
 }
