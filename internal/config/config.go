@@ -26,6 +26,7 @@ type Discord struct {
 	BotToken       string
 	RemoveCommands bool
 	GuildID        string
+	AdminRoleIDs   []string
 }
 
 type Firebase struct {
@@ -41,6 +42,7 @@ var Default = Config{
 	Discord{
 		RemoveCommands: false,
 		GuildID:        "",
+		AdminRoleIDs:   []string{},
 	},
 	Firebase{},
 }
