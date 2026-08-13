@@ -3,6 +3,8 @@ package main
 import "github.com/bwmarrin/discordgo"
 
 func init() {
+	delete(commandHandlers, "tkinfo")
+	delete(commandHandlers, "tkthanks")
 	wrapModeratorCommand("tkreset")
 	wrapModeratorCommand("tkremove")
 }
