@@ -8,6 +8,7 @@ level = "debug"
 botToken = ""
 removeCommands = true
 guildId = ""
+adminRoleIds = []
 
 [firebase]
 projectId = ""
