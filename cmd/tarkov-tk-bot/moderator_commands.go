@@ -20,7 +20,7 @@ func wrapModeratorCommand(name string) {
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: "You do not have permission to use this command.",
-					Flags: discordgo.MessageFlagsEphemeral,
+					Flags: uint64(discordgo.MessageFlagsEphemeral),
 				},
 			})
 			return
